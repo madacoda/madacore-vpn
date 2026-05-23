@@ -26,3 +26,21 @@ services:
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
     restart: unless-stopped
+
+  vpn-monitor:
+    build:
+      context: ./strategies
+      dockerfile: Dockerfile.monitor
+    container_name: vpn-monitor
+    ports:
+      - "127.0.0.1:${MONITOR_PORT:-10000}:${MONITOR_PORT:-10000}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - WG_CONTAINER_NAME=gaming-wireguard
+      - WG_INTERFACE=wg0
+      - MONITOR_PORT=${MONITOR_PORT:-10000}
+    depends_on:
+      - wireguard
+    restart: unless-stopped
+

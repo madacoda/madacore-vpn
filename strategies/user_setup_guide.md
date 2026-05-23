@@ -137,3 +137,99 @@ To confirm that the games are successfully routing through your optimized VPS pa
 * Go to **Settings** $\rightarrow$ **Options** $\rightarrow$ **To Advanced Options** $\rightarrow$ **Miscellaneous**.
 * Enable **Display Network Information**.
 * In-game, your ping and packet loss percentages will display in the top-right corner.
+
+---
+
+## 5. Phase 5: Real-Time Traffic & Quality Monitoring
+
+To monitor connection speed, latency, jitter, connected clients, and target server destinations in real-time, you can use either the terminal-based script or the containerized Web UI.
+
+### Option A: Web UI Dashboard (Recommended - Accessed from Outside)
+We have packaged the monitor as a sidecar container inside the [docker-compose.prod.yml](file:///c:/laragon/www/madacore-vpn/docker-compose.prod.yml). It connects to the Docker socket to inspect the VPN container, running a Flask server that binds locally on port `10000` (preventing direct, unencrypted public access).
+
+1. **Deploy the Stack** (ensuring the `vpn-monitor` service is built):
+   ```bash
+   cd /var/www/madacore-vpn
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+2. **Configure Nginx Reverse Proxy on the Host VPS**:
+   Because the Flask app displays live network connections and routing endpoints, you **MUST** secure the dashboard. We will set up Nginx as a reverse proxy with Basic Authentication and Let's Encrypt SSL.
+
+   * **Step 2.1: Create Basic HTTP Authentication credentials**:
+     Install Apache utilities (which include `htpasswd`) and generate a password file:
+     ```bash
+     sudo apt-get update && sudo apt-get install apache2-utils -y
+     # Replace 'admin' with your preferred username. You will be prompted to type a password.
+     sudo htpasswd -c /etc/nginx/.htpasswd_vpn_monitor admin
+     ```
+
+   * **Step 2.2: Add Nginx Server Block**:
+     Create an Nginx configuration file at `/etc/nginx/sites-available/vpn-monitor`:
+     ```nginx
+     server {
+         listen 80;
+         server_name monitoring.madacoda.dev;
+
+         # Secure with Basic Auth created in Step 2.1
+         auth_basic "MadaCore VPN Monitor - Authorization Required";
+         auth_basic_user_file /etc/nginx/.htpasswd_vpn_monitor;
+
+         location / {
+             proxy_pass http://127.0.0.1:10000;
+             proxy_set_header Host $host;
+             proxy_set_header X-Real-IP $remote_addr;
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+             proxy_set_header X-Forwarded-Proto $scheme;
+
+             # Disable buffering to allow continuous telemetry streaming
+             proxy_buffering off;
+             proxy_read_timeout 3600s;
+         }
+     }
+     ```
+     Enable the site and reload Nginx:
+     ```bash
+     sudo ln -s /etc/nginx/sites-available/vpn-monitor /etc/nginx/sites-enabled/
+     sudo nginx -t
+     sudo systemctl reload nginx
+     ```
+
+   * **Step 2.3: Cloudflare Proxy & SSL Setup**:
+     Since you are routing through Cloudflare, we don't need Certbot installed on the VPS host:
+     - Point your `monitoring.madacoda.dev` DNS A-record to your VPS Public IP in your Cloudflare dashboard and ensure it is **Proxied (Orange Cloud)**.
+     - In Cloudflare's **SSL/TLS** settings, set the mode to **Flexible** or **Full**.
+     - Enable **Always Use HTTPS** under Cloudflare's Edge Certificates to enforce SSL redirection automatically.
+
+3. **Access from Outside**:
+   Open your browser and navigate to:
+   ```text
+   https://monitoring.madacoda.dev
+   ```
+   Log in with the credentials created in Step 2.1 to see the responsive, glassmorphic dark-mode web dashboard.
+
+---
+
+### Option B: Terminal-Based Monitor
+If you prefer checking metrics directly via SSH without exposing any web ports:
+
+1. SSH into your VPS:
+   ```bash
+   ssh root@<YOUR_VPS_IP>
+   ```
+2. Run the executable terminal dashboard script:
+   ```bash
+   cd /var/www/madacore-vpn
+   chmod +x strategies/monitor_vpn.py
+   sudo python3 strategies/monitor_vpn.py
+   ```
+
+---
+
+### What is Displayed:
+- **🟢 Active Client IP**: Shows your VPN IP (e.g., `10.0.0.2`), public endpoint, and last handshake time.
+- **⚡ Live Tunnel Latency**: Measures real-time ICMP ping RTT average and jitter directly to your client.
+- **📊 Real-time Throughput (Speed)**: Shows download (Down) and upload (Up) speeds in Kbps.
+- **🎯 Connected Host Targets**: Sniffs packets dynamically on the WireGuard interface, resolves the destination IPs via reverse DNS (e.g. `valve.net` or `riotgames.com`), and displays live speeds for each destination.
+
+

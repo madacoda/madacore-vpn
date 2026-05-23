@@ -1,0 +1,20 @@
+# Sidecar container for MadaCore VPN real-time monitor
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies (Flask for web server, docker to communicate with daemon socket)
+RUN pip install --no-cache-dir flask docker
+
+# Copy the web monitor source
+COPY monitor_web.py /app/monitor_web.py
+
+# Expose Web Interface Port
+EXPOSE 10000
+
+# Environment variables
+ENV WG_CONTAINER_NAME=gaming-wireguard
+ENV WG_INTERFACE=wg0
+ENV MONITOR_PORT=10000
+
+CMD ["python", "/app/monitor_web.py"]
