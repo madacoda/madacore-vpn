@@ -638,9 +638,53 @@ HTML_TEMPLATE = """
                     return;
                 }
                 
+                if (!data.client_connected) {
+                    statusBadge.className = 'status-badge error';
+                    statusText.textContent = 'Disconnected';
+                    errorContainer.style.display = 'none';
+                    peersContainer.innerHTML = `
+                        <div class="peer-card" style="border-color: rgba(239, 68, 68, 0.2); background: rgba(239, 68, 68, 0.03);">
+                            <div style="text-align: center; padding: 2rem;">
+                                <h3 style="color: var(--accent-red); margin-bottom: 0.75rem; font-size: 1.25rem;">⚠️ VPN Connection Required</h3>
+                                <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5; max-width: 500px; margin: 0 auto;">
+                                    Your device is not connected to the MadaCore VPN. Please activate your WireGuard client tunnel to monitor real-time telemetry and run network benchmarks.
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                    const runBtn = document.getElementById('btn-run-benchmark');
+                    if (runBtn) {
+                        runBtn.disabled = true;
+                        runBtn.title = "Connect to VPN to run benchmarks";
+                    }
+                    const resultsPanel = document.getElementById('benchmark-results-panel');
+                    if (resultsPanel) {
+                        resultsPanel.innerHTML = `
+                            <p style="text-align: center; color: var(--accent-red); font-size: 0.9rem;">
+                                Benchmark unavailable. VPN connection is required.
+                            </p>
+                        `;
+                    }
+                    return;
+                }
+
                 statusBadge.className = 'status-badge';
                 statusText.textContent = 'Active';
                 errorContainer.style.display = 'none';
+
+                const runBtn = document.getElementById('btn-run-benchmark');
+                if (runBtn) {
+                    runBtn.disabled = false;
+                    runBtn.removeAttribute('title');
+                }
+                const resultsPanel = document.getElementById('benchmark-results-panel');
+                if (resultsPanel && resultsPanel.innerHTML.includes('Benchmark unavailable')) {
+                    resultsPanel.innerHTML = `
+                        <p style="text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+                            Select a server and click "Run Benchmark" to start measuring performance.
+                        </p>
+                    `;
+                }
                 
                 if (!data.peers || data.peers.length === 0) {
                     peersContainer.innerHTML = '<div class="peer-card"><p style="text-align: center; color: var(--text-muted);">No active peers detected.</p></div>';
@@ -900,13 +944,53 @@ def run_ping_benchmark(target, count=10):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+def get_client_ip():
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    cf_connecting_ip = request.headers.get("CF-Connecting-IP")
+    if cf_connecting_ip:
+        return cf_connecting_ip.strip()
+    return request.remote_addr
+
 @app.route("/")
 def index():
     return render_template_string(HTML_TEMPLATE)
 
 @app.route("/api/data")
 def api_data():
-    return jsonify(get_cached_metrics())
+    all_metrics = get_cached_metrics()
+    if all_metrics.get("status") == "error":
+        return jsonify(all_metrics)
+        
+    client_ip = get_client_ip()
+    is_local = client_ip in ("127.0.0.1", "::1", "localhost")
+    
+    filtered_peers = []
+    client_connected = False
+    
+    if is_local:
+        filtered_peers = all_metrics.get("peers", [])
+        client_connected = True
+    else:
+        for peer in all_metrics.get("peers", []):
+            peer_internal_ip = peer.get("ip", "")
+            peer_endpoint_ip = ""
+            endpoint = peer.get("endpoint", "")
+            if endpoint and endpoint != "(none)":
+                endpoint_part = endpoint.rsplit(":", 1)[0]
+                peer_endpoint_ip = endpoint_part.strip("[]")
+                
+            if client_ip == peer_internal_ip or (peer_endpoint_ip and client_ip == peer_endpoint_ip):
+                filtered_peers.append(peer)
+                client_connected = True
+                
+    return jsonify({
+        "status": "ok",
+        "timestamp": all_metrics.get("timestamp", int(time.time())),
+        "peers": filtered_peers,
+        "client_connected": client_connected
+    })
 
 @app.route("/api/benchmark", methods=["POST"])
 def api_benchmark():
