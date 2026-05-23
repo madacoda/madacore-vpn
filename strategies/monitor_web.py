@@ -1,31 +1,30 @@
 #!/usr/bin/env python3
 """
-MadaCore VPN - Containerized Web Traffic & Quality Monitor
+MadaCore VPN - Local Web Traffic & Quality Monitor
 Author: Professional Network Engineer
 
-This script runs inside a sidecar Docker container, communicates with the host
-Docker socket, and exposes a beautiful web-based dashboard on port 8080.
+This script runs natively inside the WireGuard container, starts a Flask server,
+and serves a real-time web dashboard at port 10000.
 """
 
 import os
 import re
 import time
 import socket
-import docker
+import subprocess
 from flask import Flask, jsonify, render_template_string
 from collections import defaultdict
 
 app = Flask(__name__)
 
-# Environment variable configurations
-CONTAINER_NAME = os.getenv("WG_CONTAINER_NAME", "gaming-wireguard")
+# Configurable interface and port
 INTERFACE = os.getenv("WG_INTERFACE", "wg0")
-PORT = int(os.getenv("MONITOR_PORT", "8080"))
+PORT = int(os.getenv("MONITOR_PORT", "10000"))
 
 # DNS Resolution Cache
 dns_cache = {}
 
-# Metrics Cache to limit Docker exec CPU overhead (limits updates to once every 2 seconds)
+# Metrics Cache to limit CPU overhead from multiple HTTP requests
 metrics_cache = {
     "data": None,
     "last_updated": 0
@@ -44,59 +43,20 @@ def get_hostname(ip):
         dns_cache[ip] = ip
         return ip
 
-def get_docker_client():
-    try:
-        # Connects to Docker daemon via mounted /var/run/docker.sock
-        return docker.from_env()
-    except Exception as e:
-        app.logger.error(f"Failed to connect to Docker socket: {e}")
-        return None
-
-def ensure_tcpdump(container):
-    """
-    Checks if tcpdump is available inside the WireGuard container,
-    and installs it if missing.
-    """
-    try:
-        exit_code, _ = container.exec_run("which tcpdump")
-        if exit_code != 0:
-            app.logger.info("tcpdump not found in WireGuard container. Installing...")
-            # Try Alpine's apk
-            exit_code, _ = container.exec_run("apk add --no-cache tcpdump")
-            if exit_code != 0:
-                # Try Ubuntu's apt-get
-                container.exec_run("apt-get update")
-                container.exec_run("apt-get install -y tcpdump")
-    except Exception as e:
-        app.logger.error(f"Error ensuring tcpdump: {e}")
-
 def fetch_metrics():
-    client = get_docker_client()
-    if not client:
-        return {
-            "status": "error",
-            "message": "Cannot connect to the host Docker daemon. Ensure '/var/run/docker.sock' is mounted into the monitor container."
-        }
-    
+    # 1. Query WireGuard Interface stats locally
     try:
-        container = client.containers.get(CONTAINER_NAME)
-    except Exception:
+        res = subprocess.run(
+            ["wg", "show", INTERFACE, "dump"],
+            capture_output=True, text=True, check=True
+        )
+        wg_out = res.stdout.strip()
+    except Exception as e:
         return {
             "status": "error",
-            "message": f"WireGuard container '{CONTAINER_NAME}' is not running or could not be found."
+            "message": f"Failed to execute 'wg show' on interface '{INTERFACE}'. Error: {e}"
         }
         
-    ensure_tcpdump(container)
-    
-    # 1. Query WireGuard Interface stats
-    exit_code, wg_out = container.exec_run(f"wg show {INTERFACE} dump")
-    if exit_code != 0:
-        return {
-            "status": "error",
-            "message": f"Failed to execute 'wg show'. Check if WireGuard interface '{INTERFACE}' exists."
-        }
-        
-    wg_out = wg_out.decode("utf-8", errors="ignore").strip()
     lines = wg_out.split("\n")
     if len(lines) <= 1:
         return {
@@ -118,11 +78,17 @@ def fetch_metrics():
                 "tx": int(parts[6])
             })
             
-    # 2. Run tcpdump for 1.5 seconds to calculate current speeds & targets
+    # 2. Run tcpdump for 1.5 seconds locally to calculate current speeds & targets
     capture_duration = 1.5
-    exit_code, tcpdump_out = container.exec_run(f"timeout {capture_duration} tcpdump -i {INTERFACE} -n -t -q")
-    tcpdump_out = tcpdump_out.decode("utf-8", errors="ignore")
-    
+    try:
+        res = subprocess.run(
+            ["timeout", str(capture_duration), "tcpdump", "-i", INTERFACE, "-n", "-t", "-q"],
+            capture_output=True, text=True
+        )
+        tcpdump_out = res.stdout
+    except Exception:
+        tcpdump_out = ""
+        
     # Map peer traffic: peer_ip -> { target_ip: { 'port': port, 'rx_bytes': X, 'tx_bytes': Y } }
     flows = defaultdict(lambda: defaultdict(lambda: {"port": "", "rx_bytes": 0, "tx_bytes": 0}))
     peer_speeds = defaultdict(lambda: {"rx_bytes": 0, "tx_bytes": 0})
@@ -153,16 +119,21 @@ def fetch_metrics():
     for peer in peers:
         peer_ip = peer["allowed_ips"].split("/")[0]
         
-        # Measure latency to client via container ICMP
+        # Measure latency to client via local ICMP ping
         ping_avg = -1
         ping_jitter = -1
-        exit_code, ping_out = container.exec_run(f"ping -c 3 -i 0.2 -W 1 {peer_ip}")
-        if exit_code == 0:
-            ping_out = ping_out.decode("utf-8", errors="ignore")
-            match = re.search(r"rtt min/avg/max/mdev = ([\d\.]+)/([\d\.]+)/([\d\.]+)/([\d\.]+) ms", ping_out)
-            if match:
-                ping_avg = float(match.group(2))
-                ping_jitter = float(match.group(4))
+        try:
+            res = subprocess.run(
+                ["ping", "-c", "3", "-i", "0.2", "-W", "1", peer_ip],
+                capture_output=True, text=True
+            )
+            if res.returncode == 0:
+                match = re.search(r"rtt min/avg/max/mdev = ([\d\.]+)/([\d\.]+)/([\d\.]+)/([\d\.]+) ms", res.stdout)
+                if match:
+                    ping_avg = float(match.group(2))
+                    ping_jitter = float(match.group(4))
+        except Exception:
+            pass
                 
         # Speed rates in Kbps
         rx_rate = (peer_speeds[peer_ip]["rx_bytes"] * 8) / (capture_duration * 1024)
@@ -207,7 +178,7 @@ def fetch_metrics():
 
 def get_cached_metrics():
     now = time.time()
-    # Cache metrics for 2.0s to protect CPU cycles from multiple web browsers
+    # Cache metrics for 2.0s to protect CPU cycles
     if metrics_cache["data"] is None or (now - metrics_cache["last_updated"]) >= 2.0:
         metrics_cache["data"] = fetch_metrics()
         metrics_cache["last_updated"] = now

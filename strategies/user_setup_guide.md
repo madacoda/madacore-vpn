@@ -145,9 +145,9 @@ To confirm that the games are successfully routing through your optimized VPS pa
 To monitor connection speed, latency, jitter, connected clients, and target server destinations in real-time, you can use either the terminal-based script or the containerized Web UI.
 
 ### Option A: Web UI Dashboard (Recommended - Accessed from Outside)
-We have packaged the monitor as a sidecar container inside the [docker-compose.prod.yml](file:///c:/laragon/www/madacore-vpn/docker-compose.prod.yml). It connects to the Docker socket to inspect the VPN container, running a Flask server that binds locally on port `10000` (preventing direct, unencrypted public access).
+The real-time monitoring dashboard is built directly into the custom WireGuard image (via [Dockerfile](file:///c:/laragon/www/madacore-vpn/Dockerfile)) and managed by the container's internal `s6-overlay` process manager. It runs a local Flask server that binds internally to port `10000` (which is mapped to localhost `127.0.0.1:10000` on the host, preventing direct public access).
 
-1. **Deploy the Stack** (ensuring the `vpn-monitor` service is built):
+1. **Build and Deploy the Custom Container**:
    ```bash
    cd /var/www/madacore-vpn
    docker compose -f docker-compose.prod.yml up -d --build
