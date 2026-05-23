@@ -1,0 +1,16 @@
+# Local environment files
+.env
+.env.production
+.env.local
+
+# WireGuard generated configurations & secrets
+config/
+privatekey
+publickey
+*.conf
+
+# OS/IDE metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
