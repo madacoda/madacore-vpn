@@ -166,28 +166,31 @@ The real-time monitoring dashboard is built directly into the custom WireGuard i
 
    * **Step 2.2: Add Nginx Server Block**:
      Create an Nginx configuration file at `/etc/nginx/sites-available/vpn-monitor`:
-     ```nginx
-     server {
-         listen 80;
-         server_name monitoring.madacoda.dev;
+      ```nginx
+      server {
+          listen 80;
+          server_name monitoring.madacoda.dev;
 
-         # Secure with Basic Auth created in Step 2.1
-         auth_basic "MadaCore VPN Monitor - Authorization Required";
-         auth_basic_user_file /etc/nginx/.htpasswd_vpn_monitor;
+          # Secure with Basic Auth created in Step 2.1
+          auth_basic "MadaCore VPN Monitor - Authorization Required";
+          auth_basic_user_file /etc/nginx/.htpasswd_vpn_monitor;
 
-         location / {
-             proxy_pass http://127.0.0.1:10000;
-             proxy_set_header Host $host;
-             proxy_set_header X-Real-IP $remote_addr;
-             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-             proxy_set_header X-Forwarded-Proto $scheme;
+          location / {
+              proxy_pass http://127.0.0.1:10000;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection 'upgrade';
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
 
-             # Disable buffering to allow continuous telemetry streaming
-             proxy_buffering off;
-             proxy_read_timeout 3600s;
-         }
-     }
-     ```
+              # Disable buffering to allow continuous telemetry streaming
+              proxy_buffering off;
+              proxy_read_timeout 3600s;
+          }
+      }
+      ```
      Enable the site and reload Nginx:
      ```bash
      sudo ln -s /etc/nginx/sites-available/vpn-monitor /etc/nginx/sites-enabled/

@@ -12,7 +12,7 @@ import re
 import time
 import socket
 import subprocess
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from collections import defaultdict
 
 app = Flask(__name__)
@@ -438,6 +438,124 @@ HTML_TEMPLATE = """
             font-size: 0.95rem;
             line-height: 1.5;
         }
+
+        /* Benchmark Styles */
+        .benchmark-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+        @media (max-width: 768px) {
+            .benchmark-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .form-row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            margin-bottom: 1.5rem;
+        }
+        label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        select, input {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 0.75rem;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        select option {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+        }
+        select:focus, input:focus {
+            border-color: var(--accent-blue);
+        }
+        button.btn {
+            background: linear-gradient(135deg, var(--accent-blue) 0%, #1d4ed8 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        button.btn:hover {
+            opacity: 0.9;
+        }
+        button.btn:active {
+            transform: scale(0.98);
+        }
+        button.btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .benchmark-results {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-height: 150px;
+            justify-content: center;
+        }
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.75rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+        .loader-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent-blue);
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -455,6 +573,49 @@ HTML_TEMPLATE = """
 
         <div id="error-container" style="display: none;"></div>
         <div id="peers-container"></div>
+
+        <!-- Network Benchmark Panel -->
+        <div class="peer-card" style="margin-top: 2rem;">
+            <div class="peer-header">
+                <div class="peer-info">
+                    <h2>⚡ Multi-Server Routing Benchmark</h2>
+                    <p>Test latency, jitter, and packet loss from your VPN Host to global gaming servers.</p>
+                </div>
+            </div>
+            
+            <div class="benchmark-grid">
+                <div>
+                    <div class="form-row">
+                        <div class="form-group" style="flex: 1;">
+                            <label for="benchmark-preset">Select Game Server / Destination</label>
+                            <select id="benchmark-preset" onchange="toggleCustomTarget()">
+                                <option value="sgp-1.valve.net">🇸🇬 Valve Singapore (Dota 2 / CS2)</option>
+                                <option value="16.228.0.1">🇸🇬 Riot Singapore (Valorant)</option>
+                                <option value="tyo-1.valve.net">🇯🇵 Valve Tokyo (Dota 2 / CS2)</option>
+                                <option value="203.174.191.1">🇯🇵 Riot Tokyo (Valorant)</option>
+                                <option value="16.228.16.1">🇭🇰 Riot Hong Kong (Valorant)</option>
+                                <option value="1.1.1.1">⚡ Cloudflare DNS (Anycast)</option>
+                                <option value="8.8.8.8">🔍 Google Public DNS (Anycast)</option>
+                                <option value="custom">🌐 Custom IP or Domain...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="custom-target-group" style="flex: 1; display: none;">
+                            <label for="benchmark-custom">Custom IP or Hostname</label>
+                            <input type="text" id="benchmark-custom" placeholder="e.g., valve.net" />
+                        </div>
+                    </div>
+                    <button class="btn" id="btn-run-benchmark" onclick="runBenchmark()">
+                        ▶ Run Benchmark
+                    </button>
+                </div>
+                
+                <div class="benchmark-results" id="benchmark-results-panel">
+                    <p style="text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+                        Select a server and click "Run Benchmark" to start measuring performance.
+                    </p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -581,10 +742,163 @@ HTML_TEMPLATE = """
         updateData();
         // Update every 2 seconds
         setInterval(updateData, 2000);
+
+        function toggleCustomTarget() {
+            const presetSelect = document.getElementById('benchmark-preset');
+            const customGroup = document.getElementById('custom-target-group');
+            if (presetSelect.value === 'custom') {
+                customGroup.style.display = 'flex';
+            } else {
+                customGroup.style.display = 'none';
+            }
+        }
+
+        async function runBenchmark() {
+            const presetSelect = document.getElementById('benchmark-preset');
+            let target = presetSelect.value;
+            if (target === 'custom') {
+                target = document.getElementById('benchmark-custom').value.trim();
+                if (!target) {
+                    alert('Please enter a custom IP or Hostname.');
+                    return;
+                }
+            }
+
+            const resultsPanel = document.getElementById('benchmark-results-panel');
+            const runBtn = document.getElementById('btn-run-benchmark');
+            
+            runBtn.disabled = true;
+            resultsPanel.innerHTML = `
+                <div class="loader-container">
+                    <div class="spinner"></div>
+                    <p>Executing ping benchmark to <strong>${target}</strong>...</p>
+                    <p style="font-size: 0.75rem; color: var(--text-muted);">Pinging 10 times to measure average RTT & Jitter</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/benchmark', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target })
+                });
+                
+                const data = await response.json();
+                runBtn.disabled = false;
+
+                if (data.status === 'error') {
+                    resultsPanel.innerHTML = `
+                        <div class="error-message" style="margin-bottom: 0;">
+                            <strong>Benchmark Failed:</strong> ${data.message}
+                        </div>
+                    `;
+                    return;
+                }
+
+                if (data.loss_percent === 100) {
+                    resultsPanel.innerHTML = `
+                        <div class="results-header">
+                            <span>Target: ${data.target}</span>
+                            <span style="color: var(--accent-red);">Unreachable</span>
+                        </div>
+                        <p style="text-align: center; color: var(--accent-red); margin-top: 1rem; font-size: 0.9rem;">
+                            100% Packet Loss. Host failed to respond to ICMP ping requests.
+                        </p>
+                    `;
+                    return;
+                }
+
+                let lossColor = 'var(--accent-green)';
+                if (data.loss_percent > 10) lossColor = 'var(--accent-red)';
+                else if (data.loss_percent > 0) lossColor = 'var(--accent-orange)';
+
+                let latencyColor = 'var(--accent-green)';
+                if (data.avg_ms > 150) latencyColor = 'var(--accent-red)';
+                else if (data.avg_ms > 70) latencyColor = 'var(--accent-orange)';
+
+                resultsPanel.innerHTML = `
+                    <div class="results-header">
+                        <span>Target: ${data.target}</span>
+                        <span style="color: var(--accent-green);">Success</span>
+                    </div>
+                    <div class="results-grid" style="margin-top: 1rem;">
+                        <div class="stat-box" style="padding: 0.75rem 1rem;">
+                            <span class="stat-label">Avg Latency</span>
+                            <span class="stat-value" style="color: ${latencyColor};">${data.avg_ms} ms</span>
+                        </div>
+                        <div class="stat-box" style="padding: 0.75rem 1rem;">
+                            <span class="stat-label">Jitter</span>
+                            <span class="stat-value latency">${data.jitter_ms} ms</span>
+                        </div>
+                        <div class="stat-box" style="padding: 0.75rem 1rem;">
+                            <span class="stat-label">Packet Loss</span>
+                            <span class="stat-value" style="color: ${lossColor};">${data.loss_percent}%</span>
+                        </div>
+                        <div class="stat-box" style="padding: 0.75rem 1rem;">
+                            <span class="stat-label">Min / Max RTT</span>
+                            <span class="stat-value" style="font-size: 0.85rem; margin-top: 0.25rem; font-weight: normal; color: var(--text-muted);">
+                                Min: <strong style="color: var(--text-main);">${data.min_ms} ms</strong><br>Max: <strong style="color: var(--text-main);">${data.max_ms} ms</strong>
+                            </span>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                console.error(err);
+                runBtn.disabled = false;
+                resultsPanel.innerHTML = `
+                    <div class="error-message" style="margin-bottom: 0;">
+                        <strong>Network Error:</strong> Failed to connect to monitoring backend.
+                    </div>
+                `;
+            }
+        }
     </script>
 </body>
 </html>
 """
+
+def run_ping_benchmark(target, count=10):
+    try:
+        # Validate target is a valid domain or IP
+        if not target or not re.match(r"^[a-zA-Z0-9\.\-]+$", target):
+            return {"status": "error", "message": "Invalid characters in target address"}
+            
+        res = subprocess.run(
+            ["ping", "-c", str(count), "-i", "0.2", "-W", "2", target],
+            capture_output=True, text=True, timeout=5
+        )
+        stdout = res.stdout
+        
+        # Parse packet loss
+        loss_match = re.search(r"(\d+)% packet loss", stdout)
+        loss = int(loss_match.group(1)) if loss_match else 100
+        
+        # Parse RTT
+        rtt_match = re.search(r"rtt min/avg/max/mdev = ([\d\.]+)/([\d\.]+)/([\d\.]+)/([\d\.]+) ms", stdout)
+        if rtt_match:
+            return {
+                "status": "success",
+                "target": target,
+                "loss_percent": loss,
+                "min_ms": float(rtt_match.group(1)),
+                "avg_ms": float(rtt_match.group(2)),
+                "max_ms": float(rtt_match.group(3)),
+                "jitter_ms": float(rtt_match.group(4))
+            }
+        else:
+            if loss == 100:
+                return {
+                    "status": "success",
+                    "target": target,
+                    "loss_percent": 100,
+                    "message": "Host unreachable (100% packet loss)"
+                }
+            return {"status": "error", "message": "Failed to parse ping output"}
+            
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "message": "Ping command timed out"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.route("/")
 def index():
@@ -593,6 +907,16 @@ def index():
 @app.route("/api/data")
 def api_data():
     return jsonify(get_cached_metrics())
+
+@app.route("/api/benchmark", methods=["POST"])
+def api_benchmark():
+    data = request.get_json() or {}
+    target = data.get("target", "").strip()
+    if not target:
+        return jsonify({"status": "error", "message": "Target address is required"}), 400
+    
+    result = run_ping_benchmark(target)
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
