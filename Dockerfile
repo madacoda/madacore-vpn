@@ -4,8 +4,8 @@ FROM lscr.io/linuxserver/wireguard:latest
 LABEL org.opencontainers.image.source="https://github.com/${GITHUB_REPOSITORY}"
 LABEL org.opencontainers.image.description="Gaming Optimized WireGuard VPN with Multi-Account Management"
 
-# 1. Install dependencies (Python 3, Flask, SQLite3, gunicorn, qrencode, tcpdump)
-RUN apk add --no-cache python3 py3-flask py3-gunicorn py3-sqlite3 qrencode tcpdump
+# 1. Install dependencies (Python 3 with built-in SQLite, Flask, Gunicorn, tcpdump, and qrencode CLI)
+RUN apk add --no-cache python3 py3-flask py3-gunicorn tcpdump libqrencode-tools
 
 # 2. Copy the VPN management engine, CLI, and web monitoring application
 COPY strategies/vpn_manager.py /app/vpn_manager.py
