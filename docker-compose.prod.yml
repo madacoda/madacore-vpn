@@ -21,7 +21,7 @@ services:
       - PYTHONPATH=/
     ports:
       - "${WG_PORT:-51820}:${WG_PORT:-51820}/udp"
-      - "127.0.0.1:${MONITOR_PORT:-10000}:10000"
+      - "${MONITOR_BIND:-127.0.0.1}:${MONITOR_PORT:-10000}:10000"
     volumes:
       - ./config:/config
       - /lib/modules:/lib/modules:ro

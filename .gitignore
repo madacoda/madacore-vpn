@@ -8,6 +8,14 @@ config/
 privatekey
 publickey
 *.conf
+*.db
+*.db-wal
+*.db-shm
+
+# Python cache & artifacts
+__pycache__/
+*.pyc
+*.pyo
 
 # OS/IDE metadata
 .idea/

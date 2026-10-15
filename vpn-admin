@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# MadaCore VPN - VPS Host CLI Wrapper
+# ==============================================================================
+# Allows running management commands directly on the host without remembering docker commands.
+# Example:
+#   ./vpn-admin create-user gamer1@gmail.com --devices pc,phone
+#   ./vpn-admin list-users
+#   ./vpn-admin show-qr gamer1@gmail.com phone
+# ==============================================================================
+
+CONTAINER_NAME="gaming-wireguard"
+
+# Check if Docker container is running
+if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    docker exec -it "${CONTAINER_NAME}" python3 /app/manage_vpn.py "$@"
+else
+    # Fallback to local python if running without container
+    python3 strategies/manage_vpn.py "$@"
+fi
