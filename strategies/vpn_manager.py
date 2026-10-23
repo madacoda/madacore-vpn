@@ -12,6 +12,7 @@ Core management engine providing:
 6. Automated quota enforcement:
    - Free Tier: 2 GB / day (reset midnight UTC)
    - Pro Tier:  200 GB / month (reset 1st of month)
+   - Adaw Tier: Unlimited daily and monthly bandwidth
 """
 
 import os
@@ -32,6 +33,7 @@ SERVER_IP = "10.0.0.1"
 IP_POOL_START = 2
 IP_POOL_END = 254
 MAX_DEVICES_PER_ACCOUNT = 2
+VALID_TIERS = ("free", "pro", "adaw")
 
 # Quotas in bytes
 FREE_DAILY_QUOTA_BYTES = 2 * 1024 * 1024 * 1024       # 2 GB / day
@@ -80,7 +82,7 @@ class VPNManager:
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS accounts (
                 email TEXT PRIMARY KEY COLLATE NOCASE,
-                tier TEXT CHECK(tier IN ('free', 'pro')) NOT NULL DEFAULT 'free',
+                tier TEXT CHECK(tier IN ('free', 'pro', 'adaw')) NOT NULL DEFAULT 'free',
                 daily_limit_bytes INTEGER NOT NULL DEFAULT 2147483648,
                 monthly_limit_bytes INTEGER NOT NULL DEFAULT 214748364800,
                 status TEXT CHECK(status IN ('active', 'suspended', 'quota_exceeded')) NOT NULL DEFAULT 'active',
@@ -88,6 +90,28 @@ class VPNManager:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """)
+
+            # Auto-migrate existing database if check constraint does not contain 'adaw'
+            cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='accounts'")
+            table_row = cursor.fetchone()
+            if table_row and "adaw" not in table_row[0]:
+                conn.execute("PRAGMA foreign_keys = OFF;")
+                conn.execute("""
+                CREATE TABLE accounts_adaw_mig (
+                    email TEXT PRIMARY KEY COLLATE NOCASE,
+                    tier TEXT CHECK(tier IN ('free', 'pro', 'adaw')) NOT NULL DEFAULT 'free',
+                    daily_limit_bytes INTEGER NOT NULL DEFAULT 2147483648,
+                    monthly_limit_bytes INTEGER NOT NULL DEFAULT 214748364800,
+                    status TEXT CHECK(status IN ('active', 'suspended', 'quota_exceeded')) NOT NULL DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """)
+                conn.execute("INSERT INTO accounts_adaw_mig SELECT email, tier, daily_limit_bytes, monthly_limit_bytes, status, created_at, updated_at FROM accounts;")
+                conn.execute("DROP TABLE accounts;")
+                conn.execute("ALTER TABLE accounts_adaw_mig RENAME TO accounts;")
+                conn.execute("PRAGMA foreign_keys = ON;")
+                conn.commit()
 
             # Devices Table (Max 2 devices per account)
             cursor.execute("""
@@ -257,13 +281,13 @@ class VPNManager:
     def create_account(self, email, tier="free", daily_limit_bytes=None, monthly_limit_bytes=None):
         email = self.validate_email(email)
         tier = tier.lower()
-        if tier not in ("free", "pro"):
-            raise ValueError("Tier must be either 'free' or 'pro'.")
+        if tier not in VALID_TIERS:
+            raise ValueError(f"Tier must be one of: {', '.join(VALID_TIERS)}.")
 
         if daily_limit_bytes is None:
             daily_limit_bytes = FREE_DAILY_QUOTA_BYTES if tier == "free" else 0  # 0 = unlimited daily
         if monthly_limit_bytes is None:
-            monthly_limit_bytes = PRO_MONTHLY_QUOTA_BYTES if tier == "pro" else 0
+            monthly_limit_bytes = PRO_MONTHLY_QUOTA_BYTES if tier == "pro" else 0  # 0 = unlimited monthly
 
         with self.get_db() as conn:
             cursor = conn.cursor()
@@ -365,8 +389,8 @@ class VPNManager:
     def update_tier(self, email, tier):
         email = email.strip().lower()
         tier = tier.lower()
-        if tier not in ("free", "pro"):
-            raise ValueError("Tier must be 'free' or 'pro'.")
+        if tier not in VALID_TIERS:
+            raise ValueError(f"Tier must be one of: {', '.join(VALID_TIERS)}.")
 
         daily_limit = FREE_DAILY_QUOTA_BYTES if tier == "free" else 0
         monthly_limit = PRO_MONTHLY_QUOTA_BYTES if tier == "pro" else 0
@@ -383,10 +407,12 @@ class VPNManager:
             )
             conn.commit()
 
-        # If user was quota exceeded and upgraded to pro, restore access immediately
+        # If user was quota exceeded and upgraded to pro or adaw, restore access immediately
         account = self.get_account(email)
         if account and account["status"] == "quota_exceeded":
-            if tier == "pro" and account["month_usage_bytes"] < account["monthly_limit_bytes"]:
+            if tier == "adaw":
+                self.reactivate_account(email)
+            elif tier == "pro" and account["month_usage_bytes"] < account["monthly_limit_bytes"]:
                 self.reactivate_account(email)
 
         return self.get_account(email)
@@ -864,6 +890,8 @@ AllowedIPs = {internal_ip}/32
             if tier == "free" and account["today_usage_bytes"] < account["daily_limit_bytes"]:
                 self.reactivate_account(email)
             elif tier == "pro" and account["month_usage_bytes"] < account["monthly_limit_bytes"]:
+                self.reactivate_account(email)
+            elif tier == "adaw":
                 self.reactivate_account(email)
 
     def sync_wg(self):

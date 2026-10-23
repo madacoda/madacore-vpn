@@ -8,7 +8,7 @@ A self-hosted, containerized, and kernel-optimized WireGuard VPN solution tailor
 * **Gaming-Grade Low Latency:** Configured natively in Linux kernel space (via Docker host bindings) to bypass user-space latency overhead.
 * **Email-Based Account Management:** Unique account identification with strict enforcement of **maximum 2 simultaneous devices per user**.
 * **Zero-Downtime Hot Reloading:** Instant peer provisioning and deletion in kernel memory (`wg set`) with **0ms downtime** and zero container restarts.
-* **Resource-Efficient Quota Tracking:** Embedded SQLite (`vpn.db`) with zero external daemon overhead (< 15 MB RAM total), auto-enforcing **Free Tier (2 GB/day)** and **Pro Tier (200 GB/month)** limits.
+* **Resource-Efficient Quota Tracking:** Embedded SQLite (`vpn.db`) with zero external daemon overhead (< 15 MB RAM total), auto-enforcing **Free Tier (2 GB/day)**, **Pro Tier (200 GB/month)**, and **Adaw Tier (Unlimited)** bandwidth policies.
 * **Integrated Web Dashboard & REST API:** Real-time throughput speeds, direct ping RTT/jitter, active gaming routes, in-browser QR code scanner, and one-click `.conf` downloads at port `10000`.
 * **Host CLI Tool (`./vpn-admin`):** Full administrator command-line suite for managing users, exporting profiles, and scanning terminal QR codes directly on your VPS.
 * **Linux Kernel Tuning:** Automatically adjusts system parameters (`sysctl` network buffers, transmit queue lengths `txqueuelen`, and TCP BBR) on the host VPS.
@@ -65,9 +65,9 @@ On your VPS, execute the `./vpn-admin` helper:
 # Print mobile QR code in terminal:
 ./vpn-admin show-qr player1@gmail.com phone
 
-# Reset daily quota or upgrade tier:
+# Reset daily quota or upgrade tier (free/pro/adaw):
 ./vpn-admin reset-quota player1@gmail.com
-./vpn-admin upgrade-user player1@gmail.com --tier pro
+./vpn-admin upgrade-user player1@gmail.com --tier adaw
 ```
 
 ### 3. Web Management Portal

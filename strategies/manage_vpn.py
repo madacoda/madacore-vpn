@@ -79,13 +79,13 @@ def main():
     # 1. create-user (combined user + devices)
     p_create = subparsers.add_parser("create-user", help="Create an account and provision devices in 1 command")
     p_create.add_argument("email", help="Unique user email address")
-    p_create.add_argument("--tier", choices=["free", "pro"], default="free", help="Tier: free (2GB/day) or pro (200GB/month)")
+    p_create.add_argument("--tier", choices=["free", "pro", "adaw"], default="free", help="Tier: free (2GB/day), pro (200GB/month), or adaw (unlimited)")
     p_create.add_argument("--devices", default="pc,phone", help="Comma-separated device names (max 2, e.g. pc,phone)")
 
     # 2. add-user
     p_add_user = subparsers.add_parser("add-user", help="Create a user account")
     p_add_user.add_argument("email", help="Unique user email address")
-    p_add_user.add_argument("--tier", choices=["free", "pro"], default="free", help="Tier: free or pro")
+    p_add_user.add_argument("--tier", choices=["free", "pro", "adaw"], default="free", help="Tier: free, pro, or adaw")
 
     # 3. add-device
     p_add_dev = subparsers.add_parser("add-device", help="Add a device to an existing user (max 2)")
@@ -136,9 +136,9 @@ def main():
     p_del_user.add_argument("email", help="User email address")
 
     # 10. upgrade-user
-    p_upg = subparsers.add_parser("upgrade-user", help="Change account tier between free and pro")
+    p_upg = subparsers.add_parser("upgrade-user", help="Change account tier between free, pro, and adaw")
     p_upg.add_argument("email", help="User email address")
-    p_upg.add_argument("--tier", choices=["free", "pro"], required=True, help="New tier")
+    p_upg.add_argument("--tier", choices=["free", "pro", "adaw"], required=True, help="New tier")
 
     # 11. reset-quota
     p_reset = subparsers.add_parser("reset-quota", help="Manually reset usage quota and restore active status")
@@ -237,9 +237,11 @@ def main():
                 if a["tier"] == "free":
                     limit_str = format_bytes(a["daily_limit_bytes"])
                     usage_str = f"{format_bytes(a['today_usage_bytes'])} / {limit_str} (d)"
-                else:
+                elif a["tier"] == "pro":
                     limit_str = format_bytes(a["monthly_limit_bytes"])
                     usage_str = f"{format_bytes(a['month_usage_bytes'])} / {limit_str} (m)"
+                else:
+                    usage_str = f"{format_bytes(a['today_usage_bytes'])} / Unlimited"
 
                 quota_bar = render_progress_bar(a["quota_percent"])
 
@@ -269,7 +271,13 @@ def main():
             print(f"  Device Count : {a['device_count']}/2")
             print(f"  Today Usage  : {format_bytes(a['today_usage_bytes'])} (Rx: {format_bytes(a['today_rx_bytes'])}, Tx: {format_bytes(a['today_tx_bytes'])})")
             print(f"  Month Usage  : {format_bytes(a['month_usage_bytes'])}")
-            print(f"  Quota Limit  : {format_bytes(a['daily_limit_bytes'] if a['tier'] == 'free' else a['monthly_limit_bytes'])}")
+            if a["tier"] == "free":
+                limit_display = format_bytes(a["daily_limit_bytes"]) + " (Daily)"
+            elif a["tier"] == "pro":
+                limit_display = format_bytes(a["monthly_limit_bytes"]) + " (Monthly)"
+            else:
+                limit_display = "Unlimited (Adaw)"
+            print(f"  Quota Limit  : {limit_display}")
             print(f"  Quota Bar    : {render_progress_bar(a['quota_percent'])}")
             print("  Devices:")
             for d in a["devices"]:

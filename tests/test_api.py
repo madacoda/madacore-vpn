@@ -67,10 +67,16 @@ class TestVPNWebAPI(unittest.TestCase):
         self.assertIn(b"[Interface]", res_cfg.data)
         self.assertIn(b"[Peer]", res_cfg.data)
 
-        # 5. Upgrade tier to pro
+        # 5. Upgrade tier to pro, then to adaw
         res_tier = self.app.post(f"/api/accounts/{email}/tier", json={"tier": "pro"})
         self.assertEqual(res_tier.status_code, 200)
         self.assertEqual(res_tier.get_json()["account"]["tier"], "pro")
+
+        res_adaw = self.app.post(f"/api/accounts/{email}/tier", json={"tier": "adaw"})
+        self.assertEqual(res_adaw.status_code, 200)
+        self.assertEqual(res_adaw.get_json()["account"]["tier"], "adaw")
+        self.assertEqual(res_adaw.get_json()["account"]["daily_limit_bytes"], 0)
+        self.assertEqual(res_adaw.get_json()["account"]["monthly_limit_bytes"], 0)
 
         # 6. Reset quota
         res_reset = self.app.post(f"/api/accounts/{email}/reset-quota")

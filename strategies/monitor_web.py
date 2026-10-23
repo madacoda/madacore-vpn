@@ -367,6 +367,7 @@ HTML_TEMPLATE = """
         .badge-quota { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border: 1px solid rgba(239, 68, 68, 0.3); }
         .badge-free { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.3); }
         .badge-pro { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); border: 1px solid rgba(139, 92, 246, 0.3); }
+        .badge-adaw { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
         
         .btn-primary {
             background: linear-gradient(135deg, var(--accent-blue), #2563eb);
@@ -640,6 +641,10 @@ HTML_TEMPLATE = """
                     <span class="label">Pro Tier Accounts</span>
                     <span class="value" id="stat-pro-accounts" style="color: var(--accent-purple);">0</span>
                 </div>
+                <div class="summary-card">
+                    <span class="label">Adaw Tier (Unlimited)</span>
+                    <span class="value" id="stat-adaw-accounts" style="color: #f59e0b;">0</span>
+                </div>
             </div>
 
             <div id="accounts-container">
@@ -669,6 +674,7 @@ HTML_TEMPLATE = """
                     <select id="create-tier">
                         <option value="free">Free Tier (2 GB / Day - Reset midnight UTC)</option>
                         <option value="pro">Pro Tier (200 GB / Month - Reset 1st of month)</option>
+                        <option value="adaw">Adaw Tier (Unlimited Bandwidth - No Cap)</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -764,15 +770,20 @@ HTML_TEMPLATE = """
                 let totalDevices = 0;
                 let freeCount = 0;
                 let proCount = 0;
+                let adawCount = 0;
 
                 accounts.forEach(a => {
                     totalDevices += a.device_count;
-                    if (a.tier === 'free') freeCount++; else proCount++;
+                    if (a.tier === 'free') freeCount++;
+                    else if (a.tier === 'pro') proCount++;
+                    else if (a.tier === 'adaw') adawCount++;
                 });
 
                 document.getElementById('stat-total-devices').innerText = totalDevices;
                 document.getElementById('stat-free-accounts').innerText = freeCount;
                 document.getElementById('stat-pro-accounts').innerText = proCount;
+                const adawStat = document.getElementById('stat-adaw-accounts');
+                if (adawStat) adawStat.innerText = adawCount;
 
                 const container = document.getElementById('accounts-container');
                 if (accounts.length === 0) {
@@ -785,22 +796,54 @@ HTML_TEMPLATE = """
                 }
 
                 container.innerHTML = accounts.map(a => {
-                    const isFree = a.tier === 'free';
-                    const used = isFree ? a.today_usage_bytes : a.month_usage_bytes;
-                    const limit = isFree ? a.daily_limit_bytes : a.monthly_limit_bytes;
-                    const percent = a.quota_percent || 0;
-                    
-                    let fillColor = 'var(--accent-green)';
-                    if (percent > 85) fillColor = 'var(--accent-red)';
-                    else if (percent > 65) fillColor = 'var(--accent-orange)';
-
                     const statusBadge = a.status === 'active' 
                         ? `<span class="badge badge-active"><span class="pulse-dot"></span> Active</span>`
                         : `<span class="badge badge-quota">Quota Exceeded</span>`;
 
-                    const tierBadge = isFree
-                        ? `<span class="badge badge-free">Free (2GB/Day)</span>`
-                        : `<span class="badge badge-pro">Pro (200GB/Month)</span>`;
+                    let tierBadge = '';
+                    if (a.tier === 'free') {
+                        tierBadge = `<span class="badge badge-free">Free (2GB/Day)</span>`;
+                    } else if (a.tier === 'pro') {
+                        tierBadge = `<span class="badge badge-pro">Pro (200GB/Month)</span>`;
+                    } else {
+                        tierBadge = `<span class="badge badge-adaw">Adaw (Unlimited)</span>`;
+                    }
+
+                    let quotaBarHtml = '';
+                    if (a.tier === 'adaw') {
+                        quotaBarHtml = `
+                            <div class="quota-bar-container">
+                                <div class="quota-labels">
+                                    <span>Adaw Unlimited Bandwidth (No Quota Cap)</span>
+                                    <span><strong>${formatBytes(a.today_usage_bytes)}</strong> today &bull; <strong>${formatBytes(a.month_usage_bytes)}</strong> this month</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-fill" style="width: 100%; background: linear-gradient(90deg, #f59e0b, #10b981);"></div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        const isFree = a.tier === 'free';
+                        const used = isFree ? a.today_usage_bytes : a.month_usage_bytes;
+                        const limit = isFree ? a.daily_limit_bytes : a.monthly_limit_bytes;
+                        const percent = a.quota_percent || 0;
+                        
+                        let fillColor = 'var(--accent-green)';
+                        if (percent > 85) fillColor = 'var(--accent-red)';
+                        else if (percent > 65) fillColor = 'var(--accent-orange)';
+
+                        quotaBarHtml = `
+                            <div class="quota-bar-container">
+                                <div class="quota-labels">
+                                    <span>${isFree ? "Today's Consumption (24h Window)" : "Monthly Consumption"}</span>
+                                    <span><strong>${formatBytes(used)}</strong> / ${formatBytes(limit)} (${percent}%)</span>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-fill" style="width: ${percent}%; background: ${fillColor};"></div>
+                                </div>
+                            </div>
+                        `;
+                    }
 
                     const deviceBoxes = a.devices.map(d => `
                         <div class="device-box">
@@ -828,24 +871,18 @@ HTML_TEMPLATE = """
                                     ${tierBadge}
                                     ${statusBadge}
                                 </div>
-                                <div style="display: flex; gap: 0.5rem;">
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <select class="btn-secondary" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 0.35rem 0.6rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer;" onchange="toggleTier('${a.email}', this.value)">
+                                        <option value="free" ${a.tier === 'free' ? 'selected' : ''}>Tier: Free (2GB/d)</option>
+                                        <option value="pro" ${a.tier === 'pro' ? 'selected' : ''}>Tier: Pro (200GB/m)</option>
+                                        <option value="adaw" ${a.tier === 'adaw' ? 'selected' : ''}>Tier: Adaw (Unlimited)</option>
+                                    </select>
                                     <button class="btn-secondary" onclick="resetQuota('${a.email}')">🔄 Reset Quota</button>
-                                    <button class="btn-secondary" onclick="toggleTier('${a.email}', '${isFree ? 'pro' : 'free'}')">
-                                        ${isFree ? '⭐ Upgrade to Pro' : 'Switch to Free'}
-                                    </button>
                                     <button class="btn-danger" onclick="deleteAccount('${a.email}')">Delete</button>
                                 </div>
                             </div>
 
-                            <div class="quota-bar-container">
-                                <div class="quota-labels">
-                                    <span>${isFree ? "Today's Consumption (24h Window)" : "Monthly Consumption"}</span>
-                                    <span><strong>${formatBytes(used)}</strong> / ${formatBytes(limit)} (${percent}%)</span>
-                                </div>
-                                <div class="progress-track">
-                                    <div class="progress-fill" style="width: ${percent}%; background: ${fillColor};"></div>
-                                </div>
-                            </div>
+                            ${quotaBarHtml}
 
                             <div class="devices-header">
                                 <span>ASSIGNED DEVICES</span>

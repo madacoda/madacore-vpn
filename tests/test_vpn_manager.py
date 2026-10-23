@@ -24,13 +24,21 @@ class TestVPNManager(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def test_create_account_and_validation(self):
-        # Valid account
+        # Valid account (free)
         acc = self.manager.create_account("player1@gmail.com", tier="free")
         self.assertEqual(acc["email"], "player1@gmail.com")
         self.assertEqual(acc["tier"], "free")
         self.assertEqual(acc["daily_limit_bytes"], FREE_DAILY_QUOTA_BYTES)
         self.assertEqual(acc["status"], "active")
         self.assertEqual(acc["device_count"], 0)
+
+        # Valid account (adaw - unlimited)
+        acc_adaw = self.manager.create_account("adaw_vip@gmail.com", tier="adaw")
+        self.assertEqual(acc_adaw["email"], "adaw_vip@gmail.com")
+        self.assertEqual(acc_adaw["tier"], "adaw")
+        self.assertEqual(acc_adaw["daily_limit_bytes"], 0)
+        self.assertEqual(acc_adaw["monthly_limit_bytes"], 0)
+        self.assertEqual(acc_adaw["quota_percent"], 0.0)
 
         # Invalid email format
         with self.assertRaises(ValueError):
@@ -125,6 +133,13 @@ class TestVPNManager(unittest.TestCase):
         upgraded = self.manager.update_tier(email, "pro")
         self.assertEqual(upgraded["tier"], "pro")
         self.assertEqual(upgraded["monthly_limit_bytes"], PRO_MONTHLY_QUOTA_BYTES)
+
+        # Upgrade to adaw (unlimited)
+        adaw_acc = self.manager.update_tier(email, "adaw")
+        self.assertEqual(adaw_acc["tier"], "adaw")
+        self.assertEqual(adaw_acc["daily_limit_bytes"], 0)
+        self.assertEqual(adaw_acc["monthly_limit_bytes"], 0)
+        self.assertEqual(adaw_acc["quota_percent"], 0.0)
 
     def test_delete_account_cascade(self):
         email = "delete_me@domain.com"

@@ -25,7 +25,7 @@ Instead, it uses an **Ultra-Lean Native Kernel Architecture**:
 | Container: gaming-wireguard                                              |
 |                                                                          |
 |  1. /config/vpn.db (SQLite3, 0MB daemon overhead)                        |
-|     - Accounts: email (unique PK), tier (free/pro), daily/monthly limits |
+|     - Accounts: email (unique PK), tier (free/pro/adaw), daily/monthly limits |
 |     - Devices: max 2 peers per account, static 10.0.0.X IP, pubkey       |
 |     - Usage: persistent daily & monthly byte accumulation                |
 |                                                                          |
@@ -85,9 +85,9 @@ Outputs a clean table with emails, tiers, device count, today's usage, quota pro
 ./vpn-admin reset-quota gamer1@gmail.com
 ```
 
-### Upgrade Tier (Free $\leftrightarrow$ Pro)
+### Upgrade Tier (Free $\leftrightarrow$ Pro $\leftrightarrow$ Adaw)
 ```bash
-./vpn-admin upgrade-user gamer1@gmail.com --tier pro
+./vpn-admin upgrade-user gamer1@gmail.com --tier adaw
 ```
 
 ### Delete Device or Account
@@ -106,8 +106,8 @@ The container serves an integrated dashboard at port `10000`:
   * Add accounts with 1 click.
   * Download `.conf` files directly from the browser.
   * Instant QR code modal for scanning on mobile phones.
-  * Live quota progress bars (e.g. `650 MB / 2,048 MB`).
-  * Instant Quota Reset and Tier Upgrade buttons.
+  * Live quota progress bars (e.g. `650 MB / 2,048 MB` or Unlimited for Adaw).
+  * Instant Quota Reset and Tier Selector dropdown.
 
 ### Accessing the Web Dashboard
 * **Via SSH Tunnel (Most Secure):**
@@ -126,5 +126,6 @@ The container serves an integrated dashboard at port `10000`:
 | :--- | :--- | :--- | :--- |
 | **Free** | **2 GB / Day** | Midnight UTC (Every 24 hours) | Unlimited gaming (CS2, Dota 2, Valorant use ~50-100 MB/hr) while blocking video/torrent abuse. |
 | **Pro** | **200 GB / Month** | 1st day of every month | Heavy gaming, full-tunnel routing, Discord voice, and game updates. |
+| **Adaw** | **Unlimited** | None (No quota enforcement) | VIP / Internal / Unrestricted gaming and unlimited data transfer. |
 
-When an account hits their quota, the background daemon automatically drops the peer from the live WireGuard interface. The moment the reset window arrives (midnight UTC) or an admin clicks "Reset Quota", access is automatically restored.
+When an account hits their quota, the background daemon automatically drops the peer from the live WireGuard interface. The moment the reset window arrives (midnight UTC) or an admin clicks "Reset Quota" (or upgrades the user to Adaw), access is automatically restored.

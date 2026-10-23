@@ -65,7 +65,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          source: "docker-compose.prod.yml"
+          source: "docker-compose.prod.yml,vpn-admin"
           target: "/var/www/madacore-vpn"
 
       - name: Deploy to Server via SSH
@@ -80,6 +80,7 @@ jobs:
             sudo mkdir -p /var/www/madacore-vpn
             sudo chown -R $USER:$USER /var/www/madacore-vpn
             cd /var/www/madacore-vpn
+            chmod +x vpn-admin || true
 
             # Apply Kernel Tuning automatically on the VPS host
             echo "[*] Optimizing Host Kernel..."

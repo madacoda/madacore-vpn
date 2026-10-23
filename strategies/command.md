@@ -24,11 +24,11 @@ Accounts are uniquely identified by email and enforce a **strict limit of max 2 
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `create-user <email>` | Creates an account and auto-provisions devices (default `pc,phone`) in one command. | `./vpn-admin create-user gamer@vpn.com --tier free --devices pc,phone` |
+| `create-user <email>` | Creates an account and auto-provisions devices (default `pc,phone`) in one command. | `./vpn-admin create-user gamer@vpn.com --tier adaw --devices pc,phone` |
 | `add-user <email>` | Registers a new account without provisioning devices yet. | `./vpn-admin add-user pro@vpn.com --tier pro` |
 | `list-users` | Displays a table of all accounts, device counts, daily/monthly bandwidth used, and quota status. | `./vpn-admin list-users` |
 | `show-user <email>` | Displays full details for an account, including assigned IPs, public keys, and config paths. | `./vpn-admin show-user gamer@vpn.com` |
-| `upgrade-user <email> --tier <free\|pro>` | Switches account tier between Free (2GB/day) and Pro (200GB/month). | `./vpn-admin upgrade-user gamer@vpn.com --tier pro` |
+| `upgrade-user <email> --tier <free\|pro\|adaw>` | Switches account tier between Free (2GB/day), Pro (200GB/month), and Adaw (Unlimited). | `./vpn-admin upgrade-user gamer@vpn.com --tier adaw` |
 | `reset-quota <email>` | Manually resets accumulated usage to 0 and restores active status for a quota-exceeded account. | `./vpn-admin reset-quota gamer@vpn.com` |
 | `delete-user <email>` | Deletes an account, removes all associated devices from WireGuard, and deletes config files. | `./vpn-admin delete-user gamer@vpn.com` |
 
@@ -59,7 +59,8 @@ Accounts are uniquely identified by email and enforce a **strict limit of max 2 
 The background monitoring daemon provides a web interface and HTTP API:
 
 * `GET /api/accounts` — Returns JSON list of all accounts, devices, usage, and quota status.
-* `POST /api/accounts` — Creates an account `{ "email": "...", "tier": "free", "devices": ["pc"] }`.
+* `POST /api/accounts` — Creates an account `{ "email": "...", "tier": "free|pro|adaw", "devices": ["pc"] }`.
+* `POST /api/accounts/<email>/tier` — Changes account tier `{ "tier": "free|pro|adaw" }`.
 * `POST /api/accounts/<email>/devices` — Provisions a device (supports auto keygen or `{ "public_key": "..." }`).
 * `DELETE /api/accounts/<email>/devices/<name>` — Deletes a device.
 * `DELETE /api/accounts/<email>` — Deletes an account.
