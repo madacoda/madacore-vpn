@@ -60,7 +60,14 @@ class VPNManager:
         self.wg_conf_path = self.config_dir / f"{self.interface}.conf"
         
         # Server connection parameters
-        self.server_url = os.getenv("SERVER_URL", "auto")
+        server_url = os.getenv("SERVER_URL") or os.getenv("SERVERURL") or "auto"
+        if server_url == "auto":
+            try:
+                import urllib.request
+                server_url = urllib.request.urlopen("https://api.ipify.org", timeout=3).read().decode().strip()
+            except Exception:
+                pass
+        self.server_url = server_url
         self.server_port = os.getenv("WG_PORT", "51820")
         self.peer_dns = os.getenv("PEER_DNS", "1.1.1.1,8.8.8.8")
         self.mtu = int(os.getenv("WG_MTU", "1420"))

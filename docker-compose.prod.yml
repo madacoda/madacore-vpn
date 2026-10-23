@@ -9,6 +9,7 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=${TZ:-Etc/UTC}
+      - SERVER_URL=${SERVER_URL:-auto}
       - SERVERURL=${SERVER_URL:-auto}
       - SERVERPORT=${WG_PORT:-51820}
       - PEERS=${CLIENTS_COUNT:-1}
