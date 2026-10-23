@@ -13,7 +13,12 @@ CONTAINER_NAME="gaming-wireguard"
 
 # Check if Docker container is running
 if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    docker exec -it "${CONTAINER_NAME}" python3 /app/manage_vpn.py "$@"
+    if [ -t 0 ]; then
+        DOCKER_FLAGS="-it"
+    else
+        DOCKER_FLAGS="-i"
+    fi
+    docker exec ${DOCKER_FLAGS} "${CONTAINER_NAME}" python3 /app/manage_vpn.py "$@"
 else
     # Fallback to local python if running without container
     python3 strategies/manage_vpn.py "$@"
