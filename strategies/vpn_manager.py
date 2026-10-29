@@ -57,7 +57,11 @@ class VPNManager:
         
         self.db_path = Path(db_path) if db_path else self.config_dir / "vpn.db"
         self.interface = os.getenv("WG_INTERFACE", interface)
-        self.wg_conf_path = self.config_dir / f"{self.interface}.conf"
+        wg_confs_file = self.config_dir / "wg_confs" / f"{self.interface}.conf"
+        if wg_confs_file.exists():
+            self.wg_conf_path = wg_confs_file
+        else:
+            self.wg_conf_path = self.config_dir / f"{self.interface}.conf"
         
         # Server connection parameters
         server_url = os.getenv("SERVER_URL") or os.getenv("SERVERURL") or "auto"
@@ -661,6 +665,8 @@ PersistentKeepalive = 25
             ]
             res = subprocess.run(cmd, capture_output=True, text=True)
             os.remove(temp_psk)
+            if res.returncode == 0 and shutil.which("ip"):
+                subprocess.run(["ip", "route", "replace", DEFAULT_SUBNET, "dev", self.interface], capture_output=True)
             return res.returncode == 0
         except Exception:
             return False
@@ -913,4 +919,20 @@ AllowedIPs = {internal_ip}/32
                     self._hot_add_peer(dev["public_key"], dev["preshared_key"], dev["internal_ip"])
                 else:
                     self._hot_remove_peer(dev["public_key"])
+
+        # Ensure subnet route exists for all client peers (prevents asymmetric routing)
+        if shutil.which("ip"):
+            subprocess.run(["ip", "route", "replace", DEFAULT_SUBNET, "dev", self.interface], capture_output=True)
+
+        # Enforce TCP MSS Clamping to prevent MTU black-holing on HTTPS / large TCP packets
+        if shutil.which("iptables"):
+            check_m = subprocess.run(
+                ["iptables", "-t", "mangle", "-C", "FORWARD", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"],
+                capture_output=True
+            )
+            if check_m.returncode != 0:
+                subprocess.run(
+                    ["iptables", "-t", "mangle", "-A", "FORWARD", "-p", "tcp", "--tcp-flags", "SYN,RST", "SYN", "-j", "TCPMSS", "--clamp-mss-to-pmtu"],
+                    capture_output=True
+                )
         return True
