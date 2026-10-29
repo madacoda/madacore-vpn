@@ -913,12 +913,38 @@ AllowedIPs = {internal_ip}/32
         Ensures perfect state recovery after container or VPS reboots.
         """
         accounts = self.list_accounts()
+        active_peers = []
         for acc in accounts:
             for dev in acc["devices"]:
                 if acc["status"] == "active":
                     self._hot_add_peer(dev["public_key"], dev["preshared_key"], dev["internal_ip"])
+                    active_peers.append({
+                        "email": acc["email"],
+                        "device": dev["device_name"],
+                        "pubkey": dev["public_key"],
+                        "psk": dev["preshared_key"],
+                        "ip": dev["internal_ip"]
+                    })
                 else:
                     self._hot_remove_peer(dev["public_key"])
+
+        # Persist all active peers to wg0.conf so container reboots retain all peers
+        if self.wg_conf_path.exists():
+            try:
+                content = self.wg_conf_path.read_text()
+                interface_part = re.split(r"(?=\n\[Peer\])", content)[0].strip()
+                peer_blocks = []
+                for p in active_peers:
+                    peer_blocks.append(
+                        f"\n\n# Account: {p['email']} | Device: {p['device']}\n"
+                        f"[Peer]\n"
+                        f"PublicKey = {p['pubkey']}\n"
+                        f"PresharedKey = {p['psk']}\n"
+                        f"AllowedIPs = {p['ip']}/32"
+                    )
+                self.wg_conf_path.write_text(interface_part + "".join(peer_blocks) + "\n")
+            except Exception:
+                pass
 
         # Ensure subnet route exists for all client peers (prevents asymmetric routing)
         if shutil.which("ip"):
